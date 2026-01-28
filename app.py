@@ -2,218 +2,280 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Market as a Machine: Humans vs Algorithms-Designed by Prof.Shalini Velappan", layout="wide")
+st.set_page_config(page_title="Human vs Algo Market Lab", layout="wide")
 
-# ====================================
+# ======================================
 # INITIALIZE STATE
-# ====================================
-if "price" not in st.session_state:
-    st.session_state.price = 100.0
-    st.session_state.round = 1
-    st.session_state.history = []
-    st.session_state.news_shock = 0.0
-
-    # Agents: Human + Bots
-    st.session_state.agents = {
-        "👩‍🎓 Class (Humans)": {"cash": 100000, "shares": 100},
-        "🤖 Momentum Bot": {"cash": 100000, "shares": 100},
-        "🤖 MeanReversion Bot": {"cash": 100000, "shares": 100},
-        "🤖 Panic Bot": {"cash": 100000, "shares": 100},
-        "🤖 Random Bot": {"cash": 100000, "shares": 100},
-        "🤖 Trend Follower": {"cash": 100000, "shares": 100},
+# ======================================
+if "market" not in st.session_state:
+    st.session_state.market = {
+        "round": 1,
+        "assets": {
+            "ABC": {"price": 100.0, "history": []},
+            "XYZ": {"price": 200.0, "history": []},
+        },
+        "news_shock": {"ABC": 0.0, "XYZ": 0.0},
+        "humans": {},
+        "bots": {},
     }
 
-# ====================================
+    # Create 10 human traders
+    for i in range(1, 11):
+        st.session_state.market["humans"][f"Human_{i}"] = {
+            "cash": 100000.0,
+            "positions": {"ABC": 50, "XYZ": 25}
+        }
+
+    # Create bots
+    bot_names = [
+        "Momentum Bot",
+        "MeanReversion Bot",
+        "Panic Bot",
+        "Random Bot",
+        "Trend Bot"
+    ]
+
+    for b in bot_names:
+        st.session_state.market["bots"][b] = {
+            "cash": 200000.0,
+            "positions": {"ABC": 100, "XYZ": 50}
+        }
+
+# ======================================
 # TITLE
-# ====================================
-st.title("🤖📈 Market as a Machine: Humans vs Algorithms")
-st.caption("Instructor-controlled live classroom market simulator")
+# ======================================
+st.title("🤖📈 Human vs Algorithm Market Simulator (Instructor Controlled)")
+st.caption("10 Human Traders vs Algo Bots | 2 Assets | Live Classroom Experiment")
 
-# ====================================
-# CONTROL PANEL
-# ====================================
-st.sidebar.header("📰 News & Shocks")
+# ======================================
+# SIDEBAR: NEWS CONTROLS
+# ======================================
+st.sidebar.header("📰 News Shocks")
 
-if st.sidebar.button("🚨 Bad News"):
-    st.session_state.news_shock = -0.05
+asset_for_news = st.sidebar.selectbox("Select Asset for News", ["ABC", "XYZ"])
 
-if st.sidebar.button("✅ Good News"):
-    st.session_state.news_shock = +0.05
+if st.sidebar.button("🚨 Bad News (-10%)"):
+    st.session_state.market["news_shock"][asset_for_news] = -0.10
 
-if st.sidebar.button("💣 Flash Crash"):
-    st.session_state.news_shock = -0.15
+if st.sidebar.button("✅ Good News (+10%)"):
+    st.session_state.market["news_shock"][asset_for_news] = +0.10
+
+if st.sidebar.button("💣 Flash Crash (-25%)"):
+    st.session_state.market["news_shock"][asset_for_news] = -0.25
 
 if st.sidebar.button("🔁 Reset Simulation"):
-    for k in st.session_state.keys():
+    for k in list(st.session_state.keys()):
         del st.session_state[k]
     st.rerun()
 
-# ====================================
+# ======================================
 # MARKET STATUS
-# ====================================
-col1, col2, col3 = st.columns(3)
-col1.metric("Current Price", f"₹ {st.session_state.price:.2f}")
-col2.metric("Round", st.session_state.round)
-col3.metric("Agents", len(st.session_state.agents))
+# ======================================
+st.subheader("📊 Market Status")
 
-# ====================================
-# HUMAN DECISION
-# ====================================
-st.subheader("👩‍🏫 Class Decision (Ask students & click)")
+cols = st.columns(4)
+cols[0].metric("Round", st.session_state.market["round"])
+cols[1].metric("ABC Price", f"₹ {st.session_state.market['assets']['ABC']['price']:.2f}")
+cols[2].metric("XYZ Price", f"₹ {st.session_state.market['assets']['XYZ']['price']:.2f}")
+cols[3].metric("Total Agents", 10 + len(st.session_state.market["bots"]))
 
-human_action = st.radio(
-    "What should WE do this round?",
-    ["BUY", "SELL", "HOLD"],
-    horizontal=True
-)
+# ======================================
+# HUMAN DECISIONS PANEL
+# ======================================
+st.subheader("👩‍🏫 Human Traders Decisions (Ask students & select)")
 
-# ====================================
-# RUN ROUND
-# ====================================
-if st.button("▶️ Run Next Round"):
+human_orders = {}
 
-    buy_volume = 0
-    sell_volume = 0
-    last_price = st.session_state.price
+human_names = list(st.session_state.market["humans"].keys())
+cols = st.columns(5)
 
-    # --------------------------
-    # Apply News Shock
-    # --------------------------
-    st.session_state.price *= (1 + st.session_state.news_shock)
-    st.session_state.news_shock = 0.0
+for idx, name in enumerate(human_names):
+    with cols[idx % 5]:
+        st.markdown(f"**{name}**")
 
-    # --------------------------
-    # Human action
-    # --------------------------
-    human = st.session_state.agents["👩‍🎓 Class (Humans)"]
-    qty = 20
+        asset = st.selectbox(
+            "Asset",
+            ["ABC", "XYZ"],
+            key=f"{name}_asset"
+        )
 
-    if human_action == "BUY" and human["cash"] >= qty * st.session_state.price:
-        human["cash"] -= qty * st.session_state.price
-        human["shares"] += qty
-        buy_volume += qty
+        action = st.radio(
+            "Action",
+            ["HOLD", "BUY", "SELL"],
+            horizontal=True,
+            key=f"{name}_action"
+        )
 
-    elif human_action == "SELL" and human["shares"] >= qty:
-        human["shares"] -= qty
-        human["cash"] += qty * st.session_state.price
-        sell_volume += qty
+        human_orders[name] = {
+            "asset": asset,
+            "action": action
+        }
 
-    # --------------------------
-    # BOT ACTIONS
-    # --------------------------
-    for name, agent in st.session_state.agents.items():
-        if "Bot" not in name:
-            continue
+# ======================================
+# RUN ONE ROUND
+# ======================================
+if st.button("▶️ Run Next Market Round"):
 
-        # Momentum Bot
-        if "Momentum" in name and len(st.session_state.history) > 0:
-            if st.session_state.price > st.session_state.history[-1]["price"]:
-                buy_volume += 15
-                agent["shares"] += 15
-                agent["cash"] -= 15 * st.session_state.price
-            else:
-                sell_volume += 15
-                agent["shares"] -= 15
-                agent["cash"] += 15 * st.session_state.price
+    market = st.session_state.market
 
-        # Mean Reversion
-        if "MeanReversion" in name:
-            if st.session_state.price > 105:
-                sell_volume += 15
-                agent["shares"] -= 15
-                agent["cash"] += 15 * st.session_state.price
-            elif st.session_state.price < 95:
-                buy_volume += 15
-                agent["shares"] += 15
-                agent["cash"] -= 15 * st.session_state.price
+    # ----------------------------
+    # Apply News Shocks
+    # ----------------------------
+    for a in market["assets"]:
+        shock = market["news_shock"][a]
+        if shock != 0:
+            market["assets"][a]["price"] *= (1 + shock)
+            market["news_shock"][a] = 0.0
 
-        # Panic Bot
-        if "Panic" in name and len(st.session_state.history) > 0:
-            if st.session_state.price < 0.97 * st.session_state.history[-1]["price"]:
-                sell_volume += 40
-                agent["shares"] -= 40
-                agent["cash"] += 40 * st.session_state.price
+    # ----------------------------
+    # Volume trackers
+    # ----------------------------
+    buy_volume = {"ABC": 0, "XYZ": 0}
+    sell_volume = {"ABC": 0, "XYZ": 0}
 
-        # Random Bot
-        if "Random" in name:
-            if np.random.rand() > 0.5:
-                buy_volume += 10
-                agent["shares"] += 10
-                agent["cash"] -= 10 * st.session_state.price
-            else:
-                sell_volume += 10
-                agent["shares"] -= 10
-                agent["cash"] += 10 * st.session_state.price
+    # ----------------------------
+    # Execute Human Orders
+    # ----------------------------
+    qty = 10
 
-        # Trend Follower
-        if "Trend" in name and len(st.session_state.history) > 1:
-            if st.session_state.history[-1]["price"] > st.session_state.history[-2]["price"]:
-                buy_volume += 20
-                agent["shares"] += 20
-                agent["cash"] -= 20 * st.session_state.price
+    for hname, order in human_orders.items():
+        human = market["humans"][hname]
+        asset = order["asset"]
+        action = order["action"]
+        price = market["assets"][asset]["price"]
 
-    # --------------------------
+        if action == "BUY" and human["cash"] >= qty * price:
+            human["cash"] -= qty * price
+            human["positions"][asset] += qty
+            buy_volume[asset] += qty
+
+        elif action == "SELL" and human["positions"][asset] >= qty:
+            human["positions"][asset] -= qty
+            human["cash"] += qty * price
+            sell_volume[asset] += qty
+
+    # ----------------------------
+    # BOT BEHAVIOUR
+    # ----------------------------
+    for bname, bot in market["bots"].items():
+        for asset in ["ABC", "XYZ"]:
+            price = market["assets"][asset]["price"]
+            history = market["assets"][asset]["history"]
+
+            # Momentum
+            if "Momentum" in bname and len(history) > 0:
+                if price > history[-1]:
+                    buy_volume[asset] += 20
+                else:
+                    sell_volume[asset] += 20
+
+            # Mean Reversion
+            if "MeanReversion" in bname:
+                if price > (120 if asset == "ABC" else 240):
+                    sell_volume[asset] += 15
+                elif price < (80 if asset == "ABC" else 160):
+                    buy_volume[asset] += 15
+
+            # Panic
+            if "Panic" in bname and len(history) > 0:
+                if price < 0.95 * history[-1]:
+                    sell_volume[asset] += 40
+
+            # Random
+            if "Random" in bname:
+                if np.random.rand() > 0.5:
+                    buy_volume[asset] += 10
+                else:
+                    sell_volume[asset] += 10
+
+            # Trend
+            if "Trend" in bname and len(history) > 1:
+                if history[-1] > history[-2]:
+                    buy_volume[asset] += 20
+
+    # ----------------------------
     # PRICE FORMATION
-    # --------------------------
-    imbalance = buy_volume - sell_volume
-    price_change = imbalance / 50.0
-    st.session_state.price = max(1, st.session_state.price + price_change)
+    # ----------------------------
+    for asset in ["ABC", "XYZ"]:
+        imbalance = buy_volume[asset] - sell_volume[asset]
+        price_change = imbalance / 50.0
+        new_price = max(1.0, market["assets"][asset]["price"] + price_change)
 
-    # --------------------------
-    # SAVE HISTORY
-    # --------------------------
-    st.session_state.history.append({
-        "round": st.session_state.round,
-        "price": st.session_state.price,
-        "buy": buy_volume,
-        "sell": sell_volume
-    })
+        market["assets"][asset]["history"].append(market["assets"][asset]["price"])
+        market["assets"][asset]["price"] = new_price
 
-    st.session_state.round += 1
+    market["round"] += 1
 
-# ====================================
-# PRICE CHART
-# ====================================
-if len(st.session_state.history) > 0:
-    st.subheader("📈 Price Evolution")
-    df = pd.DataFrame(st.session_state.history)
-    st.line_chart(df.set_index("round")["price"])
+# ======================================
+# PRICE CHARTS
+# ======================================
+st.subheader("📈 Price Evolution")
 
-# ====================================
+col1, col2 = st.columns(2)
+
+with col1:
+    hist = st.session_state.market["assets"]["ABC"]["history"]
+    if len(hist) > 0:
+        df = pd.DataFrame({"Round": range(1, len(hist)+1), "Price": hist})
+        st.line_chart(df.set_index("Round"))
+
+with col2:
+    hist = st.session_state.market["assets"]["XYZ"]["history"]
+    if len(hist) > 0:
+        df = pd.DataFrame({"Round": range(1, len(hist)+1), "Price": hist})
+        st.line_chart(df.set_index("Round"))
+
+# ======================================
 # LEADERBOARD
-# ====================================
-st.subheader("🏆 Performance Leaderboard")
+# ======================================
+st.subheader("🏆 Leaderboard (Humans + Bots)")
 
 rows = []
-for name, a in st.session_state.agents.items():
-    net = a["cash"] + a["shares"] * st.session_state.price
+
+# Humans
+for name, h in st.session_state.market["humans"].items():
+    net = h["cash"]
+    for a in ["ABC", "XYZ"]:
+        net += h["positions"][a] * st.session_state.market["assets"][a]["price"]
+
     rows.append({
         "Agent": name,
-        "Cash": round(a["cash"], 0),
-        "Shares": a["shares"],
+        "Type": "Human",
+        "Net Worth": round(net, 0)
+    })
+
+# Bots
+for name, b in st.session_state.market["bots"].items():
+    net = b["cash"]
+    for a in ["ABC", "XYZ"]:
+        net += b["positions"][a] * st.session_state.market["assets"][a]["price"]
+
+    rows.append({
+        "Agent": name,
+        "Type": "Bot",
         "Net Worth": round(net, 0)
     })
 
 df = pd.DataFrame(rows).sort_values("Net Worth", ascending=False)
 st.dataframe(df, use_container_width=True)
 
-# ====================================
+# ======================================
 # TEACHING NOTES
-# ====================================
+# ======================================
 st.info("""
-🎓 How to run this in class:
+🎓 How to use in class:
 
-1. Ask students: BUY / SELL / HOLD?
-2. Click the decision.
-3. Click 'Run Next Round'.
+1. For each Human_1 ... Human_10, ask that student group:
+   "What do you want to do? Buy / Sell / Hold? Which asset?"
+2. Set their choices.
+3. Click "Run Next Market Round".
 4. Occasionally click:
    - 🚨 Bad News
    - 💣 Flash Crash
    - ✅ Good News
-5. Watch:
-   - Momentum amplify moves
-   - Panic bot create crashes
-   - Humans overreact or underreact
-6. Show leaderboard and ask:
-   "Why is this bot winning?"
+5. Show:
+   - Who panics
+   - Who follows momentum
+   - Who survives volatility
+   - Which bots dominate
 """)
